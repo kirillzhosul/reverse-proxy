@@ -22,17 +22,14 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <time.h>
 #endif
 #ifdef _WIN32
 // Currently, Windows is not supported
 #include <stdlib.h>
 #endif
 
-// Temporary: TODO!
-// #define EWOULDBLOCK EAGAIN /* Operation would block */
-
-// Configuration currently is handled as struct without even loading from some place
-// TODO: Configuration loader
+// Configuration
 struct Config
 {
     int SOCKET_MAX_PENDING;
@@ -43,12 +40,21 @@ struct Config
     int LOGGING_VERBOSE;
     int TARGET_PORT;
     char *TARGET_HOST;
+    char *LOG_ERROR_PATH;
+    char *LOG_ACCESS_PATH;
     int ERROR_SHOW_VERSION;
 };
+
+// Configuration currently is handled as struct without even loading from some place
+// TODO: Configuration loader
+
 struct Config config;
 const int GATEWAY_STATUS_OK = 0;
 const int GATEWAY_STATUS_BAD = 1;
 const int GATEWAY_STATUS_TIMEOUT = 2;
+
+int access_log_fd;
+int error_log_fd;
 
 #define TEMP_BUFFER_SIZE 1024 // TODO: Configure size
 
@@ -75,7 +81,42 @@ void default_error_response(char *response, char *status)
              status, status, status, NAME, version);
 }
 
-void print_welcome_header()
+void log_error(char *text)
+{
+    char time_buffer[128];
+
+    time_t t = time(NULL);
+    struct tm *ptm = localtime(&t);
+
+    strftime(time_buffer, 128, "%Y-%m-%d %H:%M:%S", ptm);
+
+    write(error_log_fd, "[", strlen(" "));
+    write(error_log_fd, time_buffer, strlen(time_buffer));
+    write(error_log_fd, "] ", strlen(" "));
+    write(error_log_fd, text, strlen(text));
+    write(error_log_fd, "\n", strlen("\n"));
+}
+
+void log_access(char *text)
+{
+    char time_buffer[128];
+
+    time_t t = time(NULL);
+    struct tm *ptm = localtime(&t);
+
+    strftime(time_buffer, 128, "%Y-%m-%d %H:%M:%S", ptm);
+
+    write(access_log_fd, "[", strlen(" "));
+    write(access_log_fd, time_buffer, strlen(time_buffer));
+    write(access_log_fd, "] ", strlen(" "));
+    write(access_log_fd, text, strlen(text));
+    write(access_log_fd, "\n", strlen("\n"));
+}
+
+void log
+
+    void
+    print_welcome_header()
 {
     /*
         Shows application welcome header
@@ -160,7 +201,7 @@ int bind_and_listen_socket(int socket_fd)
 
 int get_gateway_response(int *gateway_answered, char *gateway_response_buffer[])
 {
-    *gateway_answered = 0;
+    *gateway_answered = GATEWAY_STATUS_BAD;
 
     if (config.LOGGING_VERBOSE)
     {
@@ -222,7 +263,7 @@ int get_gateway_response(int *gateway_answered, char *gateway_response_buffer[])
         if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
         {
             printf("ERROR: Gateway timeout!\n");
-            *gateway_answered = 2;
+            *gateway_answered = GATEWAY_STATUS_TIMEOUT;
             return -1;
         }
         printf("ERROR: Unable to receive HTTP response from gateway!\n");
@@ -233,7 +274,7 @@ int get_gateway_response(int *gateway_answered, char *gateway_response_buffer[])
         printf("INFO: HTTP response from gateway:\n%s\n", gateway_response_buffer);
     }
 
-    *gateway_answered = 1;
+    *gateway_answered = GATEWAY_STATUS_OK;
 
     return 0;
 }
@@ -251,19 +292,23 @@ int build_response(char *response)
     if (gateway_answered == GATEWAY_STATUS_BAD)
     {
         default_error_response(response, "502 Bad Gateway");
+        log_error("[502 Bad Gateway] GATEWAY_STATUS_BAD");
         return 0;
     }
     else if (gateway_answered == GATEWAY_STATUS_TIMEOUT)
     {
         default_error_response(response, "504 Gateway Timeout");
+        log_error("[504 Gateway Timeout] GATEWAY_STATUS_TIMEOUT");
         return 0;
     }
     else if (gateway_answered == GATEWAY_STATUS_OK)
     {
+        log_access("[200 OK] GATEWAY_STATUS_OK");
         snprintf(response, config.MEMORY_CONNECTION_BUFFER,
                  gateway_response_buffer);
         return 0;
     }
+    log_error("[500 Internal Server Error] ERR_UNKNOWN_GATEWAY_STATUS");
     default_error_response(response, "500 Internal Server Error");
     return -1;
 }
@@ -342,7 +387,9 @@ int parse_and_load_config(int argc, char **argv)
         .MEMORY_CONNECTION_BUFFER = 1024,
         .TARGET_HOST = "localhost",
         .TARGET_PORT = 3000,
-        .ERROR_SHOW_VERSION = 1};
+        .ERROR_SHOW_VERSION = 1,
+        .LOG_ACCESS_PATH = "./access.txt",
+        .LOG_ERROR_PATH = "./error.txt"};
 
     if (argc > 1)
     {
@@ -375,8 +422,9 @@ int main(int argc, char **argv)
         Core server launcher
         Currently arguments are not supported due to attended support for WSL
     */
-
     print_welcome_header();
     parse_and_load_config(argc, argv);
+    access_log_fd = open(config.LOG_ACCESS_PATH, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+    error_log_fd = open(config.LOG_ERROR_PATH, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
     return serve_connections(bind_and_listen_socket(create_socket(1)));
 }
