@@ -7,7 +7,7 @@
     TODO:
     - Faster polling of socket events and etc / threading
     - Configuration loader
-    - Windows / WSL support
+    - Windows support
 */
 
 #ifdef linux
@@ -113,10 +113,7 @@ void log_access(char *text)
     write(access_log_fd, "\n", strlen("\n"));
 }
 
-void log
-
-    void
-    print_welcome_header()
+void print_welcome_header()
 {
     /*
         Shows application welcome header
@@ -418,10 +415,6 @@ int parse_and_load_config(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-    /*
-        Core server launcher
-        Currently arguments are not supported due to attended support for WSL
-    */
     print_welcome_header();
     parse_and_load_config(argc, argv);
     access_log_fd = open(config.LOG_ACCESS_PATH, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
