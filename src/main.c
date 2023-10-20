@@ -29,26 +29,54 @@
 #include <stdlib.h>
 #endif
 
+#include "config.h"
+
 // Configuration
-struct Config
-{
-    int SOCKET_MAX_PENDING;
-    int SOCKET_BIND_PORT;
-    int SOCKET_REUSE_ADDR;
-    int TIMEOUT_504_SECONDS;
-    int MEMORY_CONNECTION_BUFFER;
-    int LOGGING_VERBOSE;
-    int TARGET_PORT;
-    char *TARGET_HOST;
-    char *LOG_ERROR_PATH;
-    char *LOG_ACCESS_PATH;
-    int ERROR_SHOW_VERSION;
-};
-
-// Configuration currently is handled as struct without even loading from some place
-// TODO: Configuration loader
-
 struct Config config;
+
+int parse_and_load_config(Config *config, int argc, char **argv)
+{
+    // Configuration currently is handled as struct without even loading from some place
+    // TODO: Configuration loader
+
+    struct Config loaden_config = {
+        .SOCKET_MAX_PENDING = 32,
+        .SOCKET_BIND_PORT = 8081,
+        .SOCKET_REUSE_ADDR = 1,
+        .LOGGING_VERBOSE = 0,
+        .TIMEOUT_504_SECONDS = 2,
+        .MEMORY_CONNECTION_BUFFER = 1024,
+        .TARGET_HOST = "localhost",
+        .TARGET_PORT = 3000,
+        .ERROR_SHOW_VERSION = 1,
+        .LOG_ACCESS_PATH = "./access.txt",
+        .LOG_ERROR_PATH = "./error.txt"};
+
+    if (argc > 1)
+    {
+        loaden_config.TARGET_HOST = argv[1];
+        if (argc > 2)
+        {
+            loaden_config.TARGET_PORT = atoi(argv[2]);
+        }
+        if (argc > 3)
+        {
+            loaden_config.LOGGING_VERBOSE = (strcmp(argv[3], "--verbose") == 0);
+        }
+    }
+
+    if (loaden_config.LOGGING_VERBOSE)
+    {
+        printf("INFO: Config loaden for target %s:%d!\n", loaden_config.TARGET_HOST, loaden_config.TARGET_PORT);
+    }
+    else
+    {
+        printf("Startup... Logging disabled!");
+    }
+
+    *config = loaden_config;
+}
+
 const int GATEWAY_STATUS_OK = 0;
 const int GATEWAY_STATUS_BAD = 1;
 const int GATEWAY_STATUS_TIMEOUT = 2;
@@ -373,50 +401,10 @@ int serve_connections(int server_fd)
     }
 }
 
-int parse_and_load_config(int argc, char **argv)
-{
-    struct Config loaden_config = {
-        .SOCKET_MAX_PENDING = 32,
-        .SOCKET_BIND_PORT = 8081,
-        .SOCKET_REUSE_ADDR = 1,
-        .LOGGING_VERBOSE = 0,
-        .TIMEOUT_504_SECONDS = 2,
-        .MEMORY_CONNECTION_BUFFER = 1024,
-        .TARGET_HOST = "localhost",
-        .TARGET_PORT = 3000,
-        .ERROR_SHOW_VERSION = 1,
-        .LOG_ACCESS_PATH = "./access.txt",
-        .LOG_ERROR_PATH = "./error.txt"};
-
-    if (argc > 1)
-    {
-        loaden_config.TARGET_HOST = argv[1];
-        if (argc > 2)
-        {
-            loaden_config.TARGET_PORT = atoi(argv[2]);
-        }
-        if (argc > 3)
-        {
-            loaden_config.LOGGING_VERBOSE = (strcmp(argv[3], "--verbose") == 0);
-        }
-    }
-
-    if (loaden_config.LOGGING_VERBOSE)
-    {
-        printf("INFO: Config loaden for target %s:%d!\n", loaden_config.TARGET_HOST, loaden_config.TARGET_PORT);
-    }
-    else
-    {
-        printf("Startup... Logging disabled!");
-    }
-
-    config = loaden_config;
-}
-
 int main(int argc, char **argv)
 {
     print_welcome_header();
-    parse_and_load_config(argc, argv);
+    parse_and_load_config(&config, argc, argv);
     access_log_fd = open(config.LOG_ACCESS_PATH, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
     error_log_fd = open(config.LOG_ERROR_PATH, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
     return serve_connections(bind_and_listen_socket(create_socket(1)));
